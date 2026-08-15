@@ -1,6 +1,9 @@
+#!/usr/bin/env python3
 import csv
 import logging
 import sys
+import os
+import argparse
 from pathlib import Path
 from batch_processor import BatchProcessor
 
@@ -36,29 +39,72 @@ def load_contracts_from_csv(filepath: str) -> list:
         logger.error(f"Error loading CSV: {e}")
         return []
 
+def _parse_api_keys_arg(arg: str) -> list:
+    """Parse --api-keys argument which can be a comma-separated string or a path to a file."""
+    if not arg:
+        return []
+    # path to file?
+    if os.path.isfile(arg):
+        keys = []
+        with open(arg, 'r', encoding='utf-8') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                # allow comma-separated keys on a single line too
+                for k in ln.replace(';', ',').split(','):
+                    k = k.strip()
+                    if k:
+                        keys.append(k)
+        return keys
+    # otherwise treat as comma-separated
+    parts = [p.strip() for p in arg.replace(';', ',').split(',') if p.strip()]
+    return parts
+
 def main():
     """Main scanner application"""
-    
+    parser = argparse.ArgumentParser(description='Contract verification and risk assessment scanner')
+    parser.add_argument('csv', nargs='?', default='contracts.csv', help='Path to contracts CSV file')
+    parser.add_argument('--api-keys', help='Comma-separated Etherscan API keys or path to a file containing keys (one per line).', default=None)
+    args = parser.parse_args()
+
+    # If user provided --api-keys, set ETHERSCAN_API_KEYS so downstream modules see it
+    if args.api_keys:
+        keys = _parse_api_keys_arg(args.api_keys)
+        if keys:
+            os.environ['ETHERSCAN_API_KEYS'] = ','.join(keys)
+            logger.info(f"Using {len(keys)} Etherscan API key(s) from --api-keys")
+        else:
+            logger.warning("No API keys parsed from --api-keys argument")
+
+    # Also allow ETHERSCAN_API_KEYS or ETHERSCAN_API_KEY from environment
+    env_keys_raw = os.environ.get('ETHERSCAN_API_KEYS') or os.environ.get('ETHERSCAN_API_KEY')
+    if env_keys_raw:
+        # Normalize to list to count
+        if os.environ.get('ETHERSCAN_API_KEYS'):
+            parsed = [p.strip() for p in os.environ['ETHERSCAN_API_KEYS'].replace(';', ',').split(',') if p.strip()]
+        else:
+            parsed = [os.environ.get('ETHERSCAN_API_KEY').strip()] if os.environ.get('ETHERSCAN_API_KEY') else []
+        logger.info(f"Detected {len(parsed)} Etherscan API key(s) from environment")
+    else:
+        logger.warning("No Etherscan API keys found in environment. Set ETHERSCAN_API_KEYS (comma-separated) or ETHERSCAN_API_KEY, or pass --api-keys on the command line.")
+
     print("=" * 80)
     print("CONTRACT VERIFICATION AND RISK ASSESSMENT SCANNER")
     print("=" * 80)
     print()
-    
-    # Check if CSV file is provided
-    csv_file = 'contracts.csv'
-    
-    if len(sys.argv) > 1:
-        csv_file = sys.argv[1]
-    
+
+    csv_file = args.csv
+
     # Verify CSV file exists
     if not Path(csv_file).exists():
         print(f"Error: CSV file '{csv_file}' not found")
-        print(f"\nUsage: python main.py [contracts.csv]")
+        print(f"\nUsage: python scanner.py [contracts.csv] [--api-keys \"key1,key2,...\"]")
         print(f"\nExpected CSV format:")
         print("Protocol Name,Chain,Category,Contract Address")
         print("aave-v1,Ethereum,Withdrawal,0x3dfd23A6c5E8BbcFc9581d2E864a68feb6a076d3")
         sys.exit(1)
-    
+
     # Load contracts from CSV
     contracts = load_contracts_from_csv(csv_file)
     
