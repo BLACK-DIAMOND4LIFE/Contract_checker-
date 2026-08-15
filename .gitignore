@@ -1,0 +1,31 @@
+# Environment
+.env
+.env.local
+*.pyc
+__pycache__/
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Results
+results/
+*.json
+*.csv
+*.log
+*.txt
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Dependencies
+*.egg-info/
+dist/
+build/
